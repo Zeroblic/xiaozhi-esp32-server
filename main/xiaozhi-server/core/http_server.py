@@ -1,10 +1,20 @@
-import asyncio
-from aiohttp import web
+from contextlib import contextmanager
+
+import uvicorn
+from fastapi import FastAPI
 from config.logger import setup_logging
 from core.api.ota_handler import OTAHandler
 from core.api.vision_handler import VisionHandler
 
 TAG = __name__
+
+
+class EmbeddedUvicornServer(uvicorn.Server):
+    """让顶层 app.py 统一负责进程信号和任务生命周期。"""
+
+    @contextmanager
+    def capture_signals(self):
+        yield
 
 
 class SimpleHttpServer:
@@ -40,50 +50,52 @@ class SimpleHttpServer:
             port = int(server_config.get("http_port", 8003))
 
             if port:
-                app = web.Application()
+                app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
                 if not read_config_from_api:
                     # 如果没有开启智控台，只是单模块运行，就需要再添加简单OTA接口，用于下发websocket接口
-                    app.add_routes(
-                        [
-                            web.get("/xiaozhi/ota/", self.ota_handler.handle_get),
-                            web.post("/xiaozhi/ota/", self.ota_handler.handle_post),
-                            web.options(
-                                "/xiaozhi/ota/", self.ota_handler.handle_options
-                            ),
-                            # 下载接口，仅提供 data/bin/*.bin 下载
-                            web.get(
-                                "/xiaozhi/ota/download/{filename}",
-                                self.ota_handler.handle_download,
-                            ),
-                            web.options(
-                                "/xiaozhi/ota/download/{filename}",
-                                self.ota_handler.handle_options,
-                            ),
-                        ]
+                    app.add_api_route(
+                        "/xiaozhi/ota/", self.ota_handler.handle_get, methods=["GET"]
                     )
-                # 添加路由
-                app.add_routes(
-                    [
-                        web.get("/mcp/vision/explain", self.vision_handler.handle_get),
-                        web.post(
-                            "/mcp/vision/explain", self.vision_handler.handle_post
-                        ),
-                        web.options(
-                            "/mcp/vision/explain", self.vision_handler.handle_options
-                        ),
-                    ]
+                    app.add_api_route(
+                        "/xiaozhi/ota/", self.ota_handler.handle_post, methods=["POST"]
+                    )
+                    app.add_api_route(
+                        "/xiaozhi/ota/",
+                        self.ota_handler.handle_options,
+                        methods=["OPTIONS"],
+                    )
+                    app.add_api_route(
+                        "/xiaozhi/ota/download/{filename}",
+                        self.ota_handler.handle_download,
+                        methods=["GET"],
+                    )
+                    app.add_api_route(
+                        "/xiaozhi/ota/download/{filename}",
+                        self.ota_handler.handle_options,
+                        methods=["OPTIONS"],
+                    )
+
+                app.add_api_route(
+                    "/mcp/vision/explain",
+                    self.vision_handler.handle_get,
+                    methods=["GET"],
+                )
+                app.add_api_route(
+                    "/mcp/vision/explain",
+                    self.vision_handler.handle_post,
+                    methods=["POST"],
+                )
+                app.add_api_route(
+                    "/mcp/vision/explain",
+                    self.vision_handler.handle_options,
+                    methods=["OPTIONS"],
                 )
 
-                # 运行服务
-                runner = web.AppRunner(app)
-                await runner.setup()
-                site = web.TCPSite(runner, host, port)
-                await site.start()
-
-                # 保持服务运行
-                while True:
-                    await asyncio.sleep(3600)  # 每隔 1 小时检查一次
+                server = EmbeddedUvicornServer(
+                    uvicorn.Config(app, host=host, port=port, log_config=None)
+                )
+                await server.serve()
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"HTTP服务器启动失败: {e}")
             import traceback

@@ -1,6 +1,8 @@
 import json
 import copy
-from aiohttp import web
+from fastapi import Request
+from fastapi.responses import Response
+from starlette.datastructures import UploadFile
 from config.logger import setup_logging
 from core.api.base_handler import BaseHandler
 from core.utils.util import get_vision_url, is_valid_image_file
@@ -44,19 +46,19 @@ class VisionHandler(BaseHandler):
         token = auth_header[7:]  # 移除"Bearer "前缀
         return self.auth.verify_token(token)
 
-    async def handle_post(self, request):
+    async def handle_post(self, request: Request):
         """处理 MCP Vision POST 请求"""
         response = None  # 初始化response变量
         try:
             # 验证token
             is_valid, token_device_id = self._verify_auth_token(request)
             if not is_valid:
-                response = web.Response(
-                    text=json.dumps(
+                response = Response(
+                    content=json.dumps(
                         self._create_error_response("无效的认证token或token已过期")
                     ),
-                    content_type="application/json",
-                    status=401,
+                    media_type="application/json",
+                    status_code=401,
                 )
                 return response
 
@@ -65,19 +67,17 @@ class VisionHandler(BaseHandler):
             client_id = request.headers.get("Client-Id", "")
             if device_id != token_device_id:
                 raise ValueError("设备ID与token不匹配")
-            # 解析multipart/form-data请求
-            reader = await request.multipart()
-
-            # 读取question字段
-            question_field = await reader.next()
-            if question_field is None:
+            # 解析 multipart/form-data 请求
+            form = await request.form()
+            question_field = form.get("question")
+            if question_field is None or isinstance(question_field, UploadFile):
                 raise ValueError("缺少问题字段")
-            question = await question_field.text()
+            question = str(question_field)
             self.logger.bind(tag=TAG).debug(f"Question: {question}")
 
             # 读取图片文件
-            image_field = await reader.next()
-            if image_field is None:
+            image_field = form.get("image") or form.get("file")
+            if not isinstance(image_field, UploadFile):
                 raise ValueError("缺少图片文件")
 
             # 读取图片数据
@@ -135,30 +135,30 @@ class VisionHandler(BaseHandler):
                 "response": result,
             }
 
-            response = web.Response(
-                text=json.dumps(return_json, separators=(",", ":")),
-                content_type="application/json",
+            response = Response(
+                content=json.dumps(return_json, separators=(",", ":")),
+                media_type="application/json",
             )
         except ValueError as e:
             self.logger.bind(tag=TAG).error(f"MCP Vision POST请求异常: {e}")
             return_json = self._create_error_response(str(e))
-            response = web.Response(
-                text=json.dumps(return_json, separators=(",", ":")),
-                content_type="application/json",
+            response = Response(
+                content=json.dumps(return_json, separators=(",", ":")),
+                media_type="application/json",
             )
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"MCP Vision POST请求异常: {e}")
             return_json = self._create_error_response("处理请求时发生错误")
-            response = web.Response(
-                text=json.dumps(return_json, separators=(",", ":")),
-                content_type="application/json",
+            response = Response(
+                content=json.dumps(return_json, separators=(",", ":")),
+                media_type="application/json",
             )
         finally:
             if response:
                 self._add_cors_headers(response)
             return response
 
-    async def handle_get(self, request):
+    async def handle_get(self, request: Request):
         """处理 MCP Vision GET 请求"""
         try:
             vision_explain = get_vision_url(self.config)
@@ -169,13 +169,13 @@ class VisionHandler(BaseHandler):
             else:
                 message = "MCP Vision 接口运行不正常，请打开data目录下的.config.yaml文件，找到【server.vision_explain】，设置好地址"
 
-            response = web.Response(text=message, content_type="text/plain")
+            response = Response(content=message, media_type="text/plain")
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"MCP Vision GET请求异常: {e}")
             return_json = self._create_error_response("服务器内部错误")
-            response = web.Response(
-                text=json.dumps(return_json, separators=(",", ":")),
-                content_type="application/json",
+            response = Response(
+                content=json.dumps(return_json, separators=(",", ":")),
+                media_type="application/json",
             )
         finally:
             self._add_cors_headers(response)

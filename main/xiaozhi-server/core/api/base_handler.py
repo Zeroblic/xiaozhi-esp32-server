@@ -1,4 +1,5 @@
-from aiohttp import web
+from fastapi import Request
+from fastapi.responses import Response
 from config.logger import setup_logging
 
 
@@ -15,9 +16,9 @@ class BaseHandler:
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Origin"] = "*"
 
-    async def handle_options(self, request):
+    async def handle_options(self, request: Request):
         """处理OPTIONS请求，添加CORS头信息"""
-        response = web.Response(body=b"", content_type="text/plain")
+        response = Response(content=b"", media_type="text/plain")
         self._add_cors_headers(response)
         # 添加允许的方法
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"

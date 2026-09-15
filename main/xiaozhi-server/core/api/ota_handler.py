@@ -7,7 +7,8 @@ import os
 import re
 import glob
 from typing import Dict, List, Tuple
-from aiohttp import web
+from fastapi import Request
+from fastapi.responses import FileResponse, Response
 
 from core.auth import AuthManager
 from core.utils.util import get_local_ip, get_vision_url
@@ -140,7 +141,7 @@ class OTAHandler(BaseHandler):
         else:
             return f"ws://{local_ip}:{port}/xiaozhi/v1/"
 
-    async def handle_post(self, request):
+    async def handle_post(self, request: Request):
         """处理 OTA POST 请求
 
         This handler will:
@@ -150,7 +151,7 @@ class OTAHandler(BaseHandler):
         - if found a newer firmware, set firmware.url to the download endpoint
         """
         try:
-            data = await request.text()
+            data = (await request.body()).decode("utf-8")
             self.logger.bind(tag=TAG).debug(f"OTA请求方法: {request.method}")
             self.logger.bind(tag=TAG).debug(f"OTA请求头: {request.headers}")
             self.logger.bind(tag=TAG).debug(f"OTA请求数据: {data}")
@@ -337,22 +338,22 @@ class OTAHandler(BaseHandler):
             except Exception as e:
                 self.logger.bind(tag=TAG).error(f"检查固件版本时出错: {e}")
 
-            response = web.Response(
-                text=json.dumps(return_json, separators=(",", ":")),
-                content_type="application/json",
+            response = Response(
+                content=json.dumps(return_json, separators=(",", ":")),
+                media_type="application/json",
             )
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"OTA POST处理异常: {e}")
             return_json = {"success": False, "message": "request error."}
-            response = web.Response(
-                text=json.dumps(return_json, separators=(",", ":")),
-                content_type="application/json",
+            response = Response(
+                content=json.dumps(return_json, separators=(",", ":")),
+                media_type="application/json",
             )
         finally:
             self._add_cors_headers(response)
             return response
 
-    async def handle_get(self, request):
+    async def handle_get(self, request: Request):
         """处理 OTA GET 请求"""
         try:
             server_config = self.config["server"]
@@ -361,15 +362,15 @@ class OTAHandler(BaseHandler):
             websocket_port = int(server_config.get("port", 8000))
             websocket_url = self._get_websocket_url(local_ip, websocket_port)
             message = f"OTA接口运行正常，向设备发送的websocket地址是：{websocket_url}"
-            response = web.Response(text=message, content_type="text/plain")
+            response = Response(content=message, media_type="text/plain")
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"OTA GET请求异常: {e}")
-            response = web.Response(text="OTA接口异常", content_type="text/plain")
+            response = Response(content="OTA接口异常", media_type="text/plain")
         finally:
             self._add_cors_headers(response)
             return response
 
-    async def handle_download(self, request):
+    async def handle_download(self, request: Request, filename: str):
         """
         下载固件接口
         URL: /xiaozhi/ota/download/{filename}
@@ -377,15 +378,17 @@ class OTAHandler(BaseHandler):
         - filename 必须是 basename 且匹配安全的模式
         """
         try:
-            fname = request.match_info.get("filename", "")
+            fname = filename
             if not fname:
-                raise web.HTTPBadRequest(text="filename required")
+                resp = Response(content="filename required", status_code=400)
+                return resp
 
             # sanitize
             fname = _safe_basename(fname)
             # pattern: allow letters, numbers, dot, underscore, dash
             if not re.match(r"^[A-Za-z0-9\.\-_]+\.bin$", fname):
-                raise web.HTTPBadRequest(text="invalid filename")
+                resp = Response(content="invalid filename", status_code=400)
+                return resp
 
             file_path = os.path.join(self.bin_dir, fname)
             # ensure realpath is under bin_dir
@@ -395,18 +398,18 @@ class OTAHandler(BaseHandler):
                 not file_real.startswith(bin_dir_real + os.sep)
                 and file_real != bin_dir_real
             ):
-                raise web.HTTPForbidden(text="forbidden")
+                resp = Response(content="forbidden", status_code=403)
+                return resp
 
             if not os.path.isfile(file_real):
-                raise web.HTTPNotFound(text="file not found")
+                resp = Response(content="file not found", status_code=404)
+                return resp
 
             # use FileResponse to stream file
-            resp = web.FileResponse(path=file_real)
-        except web.HTTPError as e:
-            resp = e
+            resp = FileResponse(path=file_real)
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"固件下载异常: {e}")
-            resp = web.Response(text="download error", status=500)
+            resp = Response(content="download error", status_code=500)
         finally:
             try:
                 self._add_cors_headers(resp)
