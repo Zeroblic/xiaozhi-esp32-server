@@ -8,6 +8,8 @@
 server:
   ip: 0.0.0.0
   port: 8000
+  # HTTP服务拆分后，两个服务必须使用相同的认证密钥；也可设置环境变量XIAOZHI_AUTH_KEY
+  auth_key: 你的共享认证密钥
   # http服务的端口，用于视觉分析接口
   http_port: 8003
   # 视觉分析接口地址

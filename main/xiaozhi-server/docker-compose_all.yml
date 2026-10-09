@@ -4,6 +4,9 @@ version: '3'
 services:
   # Server模块
   xiaozhi-esp32-server:
+    build:
+      context: ../..
+      dockerfile: Dockerfile-server
     image: ghcr.nju.edu.cn/xinnan-tech/xiaozhi-esp32-server:server_latest
     container_name: xiaozhi-esp32-server
     depends_on:
@@ -15,17 +18,36 @@ services:
     ports:
       # ws服务端
       - "8000:8000"
-      # http服务的端口，用于视觉分析接口
-      - "8003:8003"
     security_opt:
       - seccomp:unconfined
     environment:
       - TZ=Asia/Shanghai
+      - XIAOZHI_AUTH_KEY=${XIAOZHI_AUTH_KEY:-}
     volumes:
       # 配置文件目录
       - ./data:/opt/xiaozhi-esp32-server/data
       # 模型文件挂接，很重要
       - ./models/SenseVoiceSmall/model.pt:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall/model.pt
+
+  # 独立HTTP模块：视觉分析；未启用智控台时也提供简单OTA
+  xiaozhi-http-server:
+    build:
+      context: ../..
+      dockerfile: Dockerfile-http
+    container_name: xiaozhi-http-server
+    depends_on:
+      - xiaozhi-esp32-server
+      - xiaozhi-esp32-server-web
+    restart: always
+    networks:
+      - default
+    ports:
+      - "8003:8003"
+    environment:
+      - TZ=Asia/Shanghai
+      - XIAOZHI_AUTH_KEY=${XIAOZHI_AUTH_KEY:-}
+    volumes:
+      - ./data:/opt/xiaozhi-http-server/data
 
   # manager-api和manager-web模块
   xiaozhi-esp32-server-web:

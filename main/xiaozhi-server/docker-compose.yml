@@ -3,6 +3,9 @@
 version: '3'
 services:
   xiaozhi-esp32-server:
+    build:
+      context: ../..
+      dockerfile: Dockerfile-server
     image: ghcr.nju.edu.cn/xinnan-tech/xiaozhi-esp32-server:server_latest
     container_name: xiaozhi-esp32-server
     restart: always
@@ -10,13 +13,29 @@ services:
       - seccomp:unconfined
     environment:
       - TZ=UTC
+      - XIAOZHI_AUTH_KEY=${XIAOZHI_AUTH_KEY:-}
     ports:
       # ws服务端
       - "8000:8000"
-      # http服务的端口，用于简单OTA接口(单服务部署)，以及视觉分析接口
-      - "8003:8003"
     volumes:
       # 配置文件目录
       - ./data:/opt/xiaozhi-esp32-server/data
       # 模型文件挂接，很重要
       - ./models/SenseVoiceSmall/model.pt:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall/model.pt
+
+  xiaozhi-http-server:
+    build:
+      context: ../..
+      dockerfile: Dockerfile-http
+    container_name: xiaozhi-http-server
+    restart: always
+    depends_on:
+      - xiaozhi-esp32-server
+    environment:
+      - TZ=UTC
+      - XIAOZHI_AUTH_KEY=${XIAOZHI_AUTH_KEY:-}
+    ports:
+      - "8003:8003"
+    volumes:
+      # 与WebSocket服务共享配置、认证信息和固件目录
+      - ./data:/opt/xiaozhi-http-server/data

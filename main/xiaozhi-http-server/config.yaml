@@ -1,0 +1,38 @@
+server:
+  ip: 0.0.0.0
+  port: 8000
+  http_port: 8003
+  # 两个服务必须配置相同的 auth_key，也可以使用 XIAOZHI_AUTH_KEY 环境变量。
+  auth_key: "6710be99298f44bb8e193c58f30ff1a1"
+  websocket: ws://你的ip或者域名:端口号/xiaozhi/v1/
+  public_http_url: http://你的ip或者域名:端口号
+  vision_explain: http://你的ip或者域名:端口号/mcp/vision/explain
+  timezone_offset: 8
+  auth:
+    enabled: false
+    expire_seconds: 2592000
+    allowed_devices: []
+  mqtt_gateway: null
+  mqtt_signature_key: null
+
+firmware:
+  directory: data/bin
+  cache_ttl: 30
+
+manager-api:
+  url: ""
+  secret: ""
+  timeout: 30
+
+log:
+  log_level: INFO
+
+selected_module:
+  VLLM: ChatGLMVLLM
+
+VLLM:
+  ChatGLMVLLM:
+    type: openai
+    model_name: glm-4v-flash
+    url: https://open.bigmodel.cn/api/paas/v4/
+    api_key: 你的api_key

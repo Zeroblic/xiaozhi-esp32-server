@@ -1,0 +1,11 @@
+FROM python:3.10-slim
+
+WORKDIR /opt/xiaozhi-http-server
+
+COPY main/xiaozhi-http-server/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY main/xiaozhi-http-server .
+
+EXPOSE 8003
+CMD ["python", "app.py"]
